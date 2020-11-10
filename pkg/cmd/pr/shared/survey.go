@@ -5,6 +5,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/cli/cli/api"
+	"github.com/cli/cli/git"
 	"github.com/cli/cli/internal/ghrepo"
 	"github.com/cli/cli/pkg/githubtemplate"
 	"github.com/cli/cli/pkg/iostreams"
@@ -369,4 +370,27 @@ func MetadataSurvey(io *iostreams.IOStreams, client *api.Client, baseRepo ghrepo
 	}
 
 	return nil
+}
+
+func FindTemplates(dir, path string) ([]string, string) {
+	if dir == "" {
+		rootDir, err := git.ToplevelDir()
+		if err != nil {
+			return []string{}, ""
+		}
+		dir = rootDir
+	}
+
+	templateFiles := githubtemplate.FindNonLegacy(dir, path)
+	legacyTemplate := githubtemplate.FindLegacy(dir, path)
+
+	// TODO stop using string pointer
+
+	lt := ""
+
+	if legacyTemplate != nil {
+		lt = *legacyTemplate
+	}
+
+	return templateFiles, lt
 }

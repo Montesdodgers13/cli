@@ -8,12 +8,10 @@ import (
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/api"
-	"github.com/cli/cli/git"
 	"github.com/cli/cli/internal/config"
 	"github.com/cli/cli/internal/ghrepo"
 	prShared "github.com/cli/cli/pkg/cmd/pr/shared"
 	"github.com/cli/cli/pkg/cmdutil"
-	"github.com/cli/cli/pkg/githubtemplate"
 	"github.com/cli/cli/pkg/iostreams"
 	"github.com/cli/cli/utils"
 	"github.com/spf13/cobra"
@@ -102,7 +100,7 @@ func createRun(opts *CreateOptions) error {
 		return err
 	}
 
-	templateFiles, legacyTemplate := findTemplates(*opts)
+	templateFiles, legacyTemplate := prShared.FindTemplates(opts.RootDirOverride, "ISSUE_TEMPLATE")
 
 	isTerminal := opts.IO.IsStdoutTTY()
 
@@ -247,29 +245,4 @@ func createRun(opts *CreateOptions) error {
 	}
 
 	return nil
-}
-
-func findTemplates(opts CreateOptions) ([]string, string) {
-	// TODO can share with pr create's version
-	dir := opts.RootDirOverride
-	if dir == "" {
-		rootDir, err := git.ToplevelDir()
-		if err != nil {
-			return []string{}, ""
-		}
-		dir = rootDir
-	}
-
-	templateFiles := githubtemplate.FindNonLegacy(dir, "ISSUE_TEMPLATE")
-	legacyTemplate := githubtemplate.FindLegacy(dir, "ISSUE_TEMPLATE")
-
-	// TODO stop using string pointer
-
-	lt := ""
-
-	if legacyTemplate != nil {
-		lt = *legacyTemplate
-	}
-
-	return templateFiles, lt
 }

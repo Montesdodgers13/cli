@@ -18,7 +18,6 @@ import (
 	"github.com/cli/cli/internal/ghrepo"
 	"github.com/cli/cli/pkg/cmd/pr/shared"
 	"github.com/cli/cli/pkg/cmdutil"
-	"github.com/cli/cli/pkg/githubtemplate"
 	"github.com/cli/cli/pkg/iostreams"
 	"github.com/cli/cli/pkg/prompt"
 	"github.com/cli/cli/utils"
@@ -245,7 +244,7 @@ func createRun(opts *CreateOptions) (err error) {
 
 	templateContent := ""
 	if !opts.BodyProvided {
-		templateFiles, legacyTemplate := findTemplates(*opts)
+		templateFiles, legacyTemplate := shared.FindTemplates(opts.RootDirOverride, "PULL_REQUEST_TEMPLATE")
 
 		templateContent, err = shared.TemplateSurvey(templateFiles, legacyTemplate, state)
 		if err != nil {
@@ -694,42 +693,6 @@ func generateCompareURL(createCtx CreateContext, state shared.IssueMetadataState
 		return "", err
 	}
 	return url, nil
-}
-
-func findTemplates(opts CreateOptions) ([]string, string) {
-	dir := opts.RootDirOverride
-	if dir == "" {
-		rootDir, err := git.ToplevelDir()
-		if err != nil {
-			return []string{}, ""
-		}
-		dir = rootDir
-	}
-
-	templateFiles := githubtemplate.FindNonLegacy(dir, "PULL_REQUEST_TEMPLATE")
-	legacyTemplate := githubtemplate.FindLegacy(dir, "PULL_REQUEST_TEMPLATE")
-
-	// TODO stop using string pointer
-
-	lt := ""
-
-	if legacyTemplate != nil {
-		lt = *legacyTemplate
-	}
-
-	return templateFiles, lt
-}
-
-func findTemplateFiles(opts CreateOptions) []string {
-	dir := opts.RootDirOverride
-	if dir == "" {
-		rootDir, err := git.ToplevelDir()
-		if err != nil {
-			return []string{}
-		}
-		dir = rootDir
-	}
-	return githubtemplate.FindNonLegacy(dir, "PULL_REQUEST_TEMPLATE")
 }
 
 var gitPushRegexp = regexp.MustCompile("^remote: (Create a pull request.*by visiting|[[:space:]]*https://.*/pull/new/).*\n?$")
