@@ -231,11 +231,23 @@ func createRun(opts *CreateOptions) (err error) {
 			"%s warning: could not compute title or body defaults: %s\n", cs.Yellow("!"), defaultsErr)
 	}
 
+	if !opts.TitleProvided {
+		err = shared.TitleSurvey(&state)
+		if err != nil {
+			return err
+		}
+	}
+
+	editorCommand, err := cmdutil.DetermineEditor(opts.Config)
+	if err != nil {
+		return err
+	}
+
 	templateContent := ""
 	if !opts.BodyProvided {
 		templateFiles, legacyTemplate := findTemplates(*opts)
 
-		templateContent, err := shared.TemplateSurvey(templateFiles, legacyTemplate, state)
+		templateContent, err = shared.TemplateSurvey(templateFiles, legacyTemplate, state)
 		if err != nil {
 			return err
 		}
@@ -248,23 +260,36 @@ func createRun(opts *CreateOptions) (err error) {
 			}
 			state.Body += templateContent
 		}
+
+		err = shared.BodySurvey(&state, editorCommand)
+		if err != nil {
+			return err
+		}
+
+		if state.Body == "" {
+			state.Body = templateContent
+		}
 	}
 
-	editorCommand, err := cmdutil.DetermineEditor(opts.Config)
+	allowMetadata := ctx.BaseRepo.ViewerCanTriage()
+	action, err := shared.ConfirmSubmission(!state.HasMetadata(), allowMetadata)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to confirm: %w", err)
 	}
 
-	// TODO take template stuff out of titlebodysurvey and make sure issue create can use it.
+	if action == shared.MetadataAction {
+		err = shared.MetadataSurvey(opts.IO, client, ctx.BaseRepo, &state)
+		if err != nil {
+			return err
+		}
 
-	// TODO fix this nasty sig. don't need to pass defs, don't need to pass provided title/body...in
-	// general this function should be destroyed.
-	err = shared.TitleBodySurvey(opts.IO, editorCommand, &state, client, ctx.BaseRepo, opts.Title, opts.Body, defs, templateContent, true, ctx.BaseRepo.ViewerCanTriage())
-	if err != nil {
-		return fmt.Errorf("could not collect title and/or body: %w", err)
+		action, err = shared.ConfirmSubmission(!state.HasMetadata(), false)
+		if err != nil {
+			return err
+		}
 	}
 
-	if state.Action == shared.CancelAction {
+	if action == shared.CancelAction {
 		fmt.Fprintln(opts.IO.ErrOut, "Discarding.")
 		return nil
 	}
@@ -274,11 +299,11 @@ func createRun(opts *CreateOptions) (err error) {
 		return err
 	}
 
-	if state.Action == shared.PreviewAction {
+	if action == shared.PreviewAction {
 		return previewPR(*opts, *ctx, state)
 	}
 
-	if state.Action == shared.SubmitAction {
+	if action == shared.SubmitAction {
 		return submitPR(*opts, *ctx, state)
 	}
 
