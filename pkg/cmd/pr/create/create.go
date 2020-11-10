@@ -113,6 +113,10 @@ func NewCmdCreate(f *cmdutil.Factory, runF func(*CreateOptions) error) *cobra.Co
 				return &cmdutil.FlagError{Err: errors.New("--title or --fill required when not running interactively")}
 			}
 
+			if !opts.IO.CanPrompt() {
+				opts.Interactive = false
+			}
+
 			if opts.IsDraft && opts.WebMode {
 				return errors.New("the --draft flag is not supported with --web")
 			}
@@ -157,6 +161,9 @@ func createRun(opts *CreateOptions) (err error) {
 	}
 
 	defs, defaultsErr := computeDefaults(*ctx)
+	if defaultsErr != nil && (opts.Autofill || opts.WebMode || !opts.Interactive) {
+		return fmt.Errorf("could not compute title or body defaults: %w", defaultsErr)
+	}
 
 	var milestoneTitles []string
 	if opts.Milestone != "" {
@@ -183,19 +190,19 @@ func createRun(opts *CreateOptions) (err error) {
 	}
 
 	if opts.WebMode {
-		return createViaWeb(*opts, *ctx, state)
+		err := handlePush(*opts, *ctx)
+		if err != nil {
+			return err
+		}
+		return previewPR(*opts, *ctx, state)
 	}
 
-	// TODO carve out Autofill and/or non-interactive case
+	if opts.Autofill || !opts.Interactive {
+		return submitPR(*opts, *ctx, state)
+	}
+
 	// TODO destroy titlebodysurvey helper
 	// TODO use state struct in shared helpers as i'm able
-
-	action := shared.SubmitAction
-	if opts.Autofill {
-		if defaultsErr != nil && !(opts.TitleProvided || opts.BodyProvided) {
-			return fmt.Errorf("could not compute title or body defaults: %w", defaultsErr)
-		}
-	}
 
 	existingPR, err := api.PullRequestForBranch(
 		client, ctx.BaseRepo, ctx.BaseBranch, ctx.HeadBranchLabel, []string{"OPEN"})
@@ -210,55 +217,50 @@ func createRun(opts *CreateOptions) (err error) {
 
 	cs := opts.IO.ColorScheme()
 
-	isTerminal := opts.IO.IsStdinTTY() && opts.IO.IsStdoutTTY()
-
-	if !opts.Autofill {
-		message := "\nCreating pull request for %s into %s in %s\n\n"
-		if opts.IsDraft {
-			message = "\nCreating draft pull request for %s into %s in %s\n\n"
-		}
-
-		if isTerminal {
-			fmt.Fprintf(opts.IO.ErrOut, message,
-				cs.Cyan(ctx.HeadBranchLabel),
-				cs.Cyan(ctx.BaseBranch),
-				ghrepo.FullName(ctx.BaseRepo))
-			if (state.Title == "" || state.Body == "") && defaultsErr != nil {
-				fmt.Fprintf(opts.IO.ErrOut, "%s warning: could not compute title or body defaults: %s\n", cs.Yellow("!"), defaultsErr)
-			}
-		}
+	message := "\nCreating pull request for %s into %s in %s\n\n"
+	if opts.IsDraft {
+		message = "\nCreating draft pull request for %s into %s in %s\n\n"
 	}
 
-	if !opts.Autofill && opts.Interactive {
-		var nonLegacyTemplateFiles []string
-		var legacyTemplateFile *string
+	fmt.Fprintf(opts.IO.ErrOut, message,
+		cs.Cyan(ctx.HeadBranchLabel),
+		cs.Cyan(ctx.BaseBranch),
+		ghrepo.FullName(ctx.BaseRepo))
+	if (state.Title == "" || state.Body == "") && defaultsErr != nil {
+		fmt.Fprintf(opts.IO.ErrOut,
+			"%s warning: could not compute title or body defaults: %s\n", cs.Yellow("!"), defaultsErr)
+	}
 
-		if opts.RootDirOverride != "" {
-			nonLegacyTemplateFiles = githubtemplate.FindNonLegacy(opts.RootDirOverride, "PULL_REQUEST_TEMPLATE")
-			legacyTemplateFile = githubtemplate.FindLegacy(opts.RootDirOverride, "PULL_REQUEST_TEMPLATE")
-		} else if rootDir, err := git.ToplevelDir(); err == nil {
-			nonLegacyTemplateFiles = githubtemplate.FindNonLegacy(rootDir, "PULL_REQUEST_TEMPLATE")
-			legacyTemplateFile = githubtemplate.FindLegacy(rootDir, "PULL_REQUEST_TEMPLATE")
-		}
+	action := shared.SubmitAction
 
-		editorCommand, err := cmdutil.DetermineEditor(opts.Config)
-		if err != nil {
-			return err
-		}
+	var nonLegacyTemplateFiles []string
+	var legacyTemplateFile *string
 
-		// TODO fix this nasty sig. don't need to pass defs, don't need to pass provided title/body...in
-		// general this function should be destroyed.
-		err = shared.TitleBodySurvey(opts.IO, editorCommand, &state, client, ctx.BaseRepo, opts.Title, opts.Body, defs, nonLegacyTemplateFiles, legacyTemplateFile, true, ctx.BaseRepo.ViewerCanTriage())
-		if err != nil {
-			return fmt.Errorf("could not collect title and/or body: %w", err)
-		}
+	if opts.RootDirOverride != "" {
+		nonLegacyTemplateFiles = githubtemplate.FindNonLegacy(opts.RootDirOverride, "PULL_REQUEST_TEMPLATE")
+		legacyTemplateFile = githubtemplate.FindLegacy(opts.RootDirOverride, "PULL_REQUEST_TEMPLATE")
+	} else if rootDir, err := git.ToplevelDir(); err == nil {
+		nonLegacyTemplateFiles = githubtemplate.FindNonLegacy(rootDir, "PULL_REQUEST_TEMPLATE")
+		legacyTemplateFile = githubtemplate.FindLegacy(rootDir, "PULL_REQUEST_TEMPLATE")
+	}
 
-		action = state.Action
+	editorCommand, err := cmdutil.DetermineEditor(opts.Config)
+	if err != nil {
+		return err
+	}
 
-		if action == shared.CancelAction {
-			fmt.Fprintln(opts.IO.ErrOut, "Discarding.")
-			return nil
-		}
+	// TODO fix this nasty sig. don't need to pass defs, don't need to pass provided title/body...in
+	// general this function should be destroyed.
+	err = shared.TitleBodySurvey(opts.IO, editorCommand, &state, client, ctx.BaseRepo, opts.Title, opts.Body, defs, nonLegacyTemplateFiles, legacyTemplateFile, true, ctx.BaseRepo.ViewerCanTriage())
+	if err != nil {
+		return fmt.Errorf("could not collect title and/or body: %w", err)
+	}
+
+	action = state.Action
+
+	if action == shared.CancelAction {
+		fmt.Fprintln(opts.IO.ErrOut, "Discarding.")
+		return nil
 	}
 
 	err = handlePush(*opts, *ctx)
@@ -266,48 +268,15 @@ func createRun(opts *CreateOptions) (err error) {
 		return err
 	}
 
-	if action == shared.SubmitAction && state.Title == "" {
-		return errors.New("pull request title must not be blank")
+	if action == shared.PreviewAction {
+		return previewPR(*opts, *ctx, state)
 	}
 
 	if action == shared.SubmitAction {
-		params := map[string]interface{}{
-			"title":       state.Title,
-			"body":        state.Body,
-			"draft":       opts.IsDraft,
-			"baseRefName": ctx.BaseBranch,
-			"headRefName": ctx.HeadBranchLabel,
-		}
-
-		err = shared.AddMetadataToIssueParams(client, ctx.BaseRepo, params, &state)
-		if err != nil {
-			return err
-		}
-
-		pr, err := api.CreatePullRequest(client, ctx.BaseRepo, params)
-		if pr != nil {
-			fmt.Fprintln(opts.IO.Out, pr.URL)
-		}
-		if err != nil {
-			if pr != nil {
-				return fmt.Errorf("pull request update failed: %w", err)
-			}
-			return fmt.Errorf("pull request create failed: %w", err)
-		}
-	} else if action == shared.PreviewAction {
-		openURL, err := generateCompareURL(*ctx, state)
-		if err != nil {
-			return err
-		}
-		if isTerminal {
-			fmt.Fprintf(opts.IO.ErrOut, "Opening %s in your browser.\n", utils.DisplayURL(openURL))
-		}
-		return utils.OpenInBrowser(openURL)
-	} else {
-		panic("Unreachable state")
+		return submitPR(*opts, *ctx, state)
 	}
 
-	return nil
+	return errors.New("expected to cancel, preview, or submit")
 }
 
 func computeDefaults(createCtx CreateContext) (shared.Defaults, error) {
@@ -543,13 +512,45 @@ func NewCreateContext(opts *CreateOptions) (*CreateContext, error) {
 
 }
 
-func createViaWeb(opts CreateOptions, createCtx CreateContext, state shared.IssueMetadataState) error {
-	openURL, err := generateCompareURL(createCtx, state)
+func submitPR(opts CreateOptions, createCtx CreateContext, state shared.IssueMetadataState) error {
+	httpClient, err := opts.HttpClient()
+	if err != nil {
+		return nil
+	}
+	client := api.NewClientFromHTTP(httpClient)
+
+	params := map[string]interface{}{
+		"title":       state.Title,
+		"body":        state.Body,
+		"draft":       opts.IsDraft,
+		"baseRefName": createCtx.BaseBranch,
+		"headRefName": createCtx.HeadBranchLabel,
+	}
+
+	if params["title"] == "" {
+		return errors.New("pull request title must not be blank")
+	}
+
+	err = shared.AddMetadataToIssueParams(client, createCtx.BaseRepo, params, &state)
 	if err != nil {
 		return err
 	}
 
-	err = handlePush(opts, createCtx)
+	pr, err := api.CreatePullRequest(client, createCtx.BaseRepo, params)
+	if pr != nil {
+		fmt.Fprintln(opts.IO.Out, pr.URL)
+	}
+	if err != nil {
+		if pr != nil {
+			return fmt.Errorf("pull request update failed: %w", err)
+		}
+		return fmt.Errorf("pull request create failed: %w", err)
+	}
+	return nil
+}
+
+func previewPR(opts CreateOptions, createCtx CreateContext, state shared.IssueMetadataState) error {
+	openURL, err := generateCompareURL(createCtx, state)
 	if err != nil {
 		return err
 	}
@@ -558,6 +559,7 @@ func createViaWeb(opts CreateOptions, createCtx CreateContext, state shared.Issu
 		fmt.Fprintf(opts.IO.ErrOut, "Opening %s in your browser.\n", utils.DisplayURL(openURL))
 	}
 	return utils.OpenInBrowser(openURL)
+
 }
 
 func handlePush(opts CreateOptions, createCtx CreateContext) error {
