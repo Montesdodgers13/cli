@@ -202,7 +202,7 @@ func createRun(opts *CreateOptions) error {
 			}
 		}
 
-		if tb.Action == prShared.CancelAction {
+		if action == prShared.CancelAction {
 			fmt.Fprintln(opts.IO.ErrOut, "Discarding.")
 
 			return nil

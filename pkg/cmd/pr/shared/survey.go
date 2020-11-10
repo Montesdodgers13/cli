@@ -32,8 +32,6 @@ type IssueMetadataState struct {
 
 	Body  string
 	Title string
-	// TODO may be able to delete this
-	Action Action
 
 	Metadata   []string
 	Reviewers  []string
