@@ -10,6 +10,7 @@ import (
 	"github.com/cli/cli/git"
 	"github.com/cli/cli/internal/config"
 	"github.com/cli/cli/internal/ghrepo"
+	"github.com/cli/cli/pkg/cmd/pr/shared"
 	prShared "github.com/cli/cli/pkg/cmd/pr/shared"
 	"github.com/cli/cli/pkg/cmdutil"
 	"github.com/cli/cli/pkg/githubtemplate"
@@ -147,6 +148,11 @@ func createRun(opts *CreateOptions) error {
 		Milestones: milestones,
 	}
 
+	templateContent, err := shared.TemplateSurvey(templateFiles, legacyTemplate, tb)
+	if err != nil {
+		return err
+	}
+
 	title := opts.Title
 	body := opts.Body
 
@@ -156,7 +162,7 @@ func createRun(opts *CreateOptions) error {
 			return err
 		}
 
-		err = prShared.TitleBodySurvey(opts.IO, editorCommand, &tb, apiClient, baseRepo, title, body, prShared.Defaults{}, templateFiles, &legacyTemplate, false, repo.ViewerCanTriage())
+		err = prShared.TitleBodySurvey(opts.IO, editorCommand, &tb, apiClient, baseRepo, title, body, prShared.Defaults{}, templateContent, false, repo.ViewerCanTriage())
 		if err != nil {
 			return fmt.Errorf("could not collect title and/or body: %w", err)
 		}

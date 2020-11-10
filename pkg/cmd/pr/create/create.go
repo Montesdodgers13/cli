@@ -231,6 +231,7 @@ func createRun(opts *CreateOptions) (err error) {
 			"%s warning: could not compute title or body defaults: %s\n", cs.Yellow("!"), defaultsErr)
 	}
 
+	templateContent := ""
 	if !opts.BodyProvided {
 		templateFiles, legacyTemplate := findTemplates(*opts)
 
@@ -254,10 +255,11 @@ func createRun(opts *CreateOptions) (err error) {
 		return err
 	}
 
+	// TODO take template stuff out of titlebodysurvey and make sure issue create can use it.
+
 	// TODO fix this nasty sig. don't need to pass defs, don't need to pass provided title/body...in
 	// general this function should be destroyed.
-	var shim string
-	err = shared.TitleBodySurvey(opts.IO, editorCommand, &state, client, ctx.BaseRepo, opts.Title, opts.Body, defs, []string{}, &shim, true, ctx.BaseRepo.ViewerCanTriage())
+	err = shared.TitleBodySurvey(opts.IO, editorCommand, &state, client, ctx.BaseRepo, opts.Title, opts.Body, defs, templateContent, true, ctx.BaseRepo.ViewerCanTriage())
 	if err != nil {
 		return fmt.Errorf("could not collect title and/or body: %w", err)
 	}

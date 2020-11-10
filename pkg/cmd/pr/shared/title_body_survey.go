@@ -164,31 +164,19 @@ func selectTemplate(nonLegacyTemplatePaths []string, legacyTemplatePath string, 
 }
 
 // FIXME: this command has too many parameters and responsibilities
-func TitleBodySurvey(io *iostreams.IOStreams, editorCommand string, issueState *IssueMetadataState, apiClient *api.Client, repo ghrepo.Interface, providedTitle, providedBody string, defs Defaults, nonLegacyTemplatePaths []string, legacyTemplatePath *string, allowReviewers, allowMetadata bool) error {
+func TitleBodySurvey(io *iostreams.IOStreams, editorCommand string, issueState *IssueMetadataState, apiClient *api.Client, repo ghrepo.Interface, providedTitle, providedBody string, defs Defaults, templateContent string, allowReviewers, allowMetadata bool) error {
 	issueState.Title = defs.Title
-	templateContents := ""
 
 	if providedBody == "" {
 		issueState.Body = defs.Body
 
-		if len(nonLegacyTemplatePaths) > 0 {
-			var err error
-			templateContents, err = selectTemplate(nonLegacyTemplatePaths, *legacyTemplatePath, issueState.Type)
-			if err != nil {
-				return err
-			}
-
-		} else if legacyTemplatePath != nil {
-			templateContents = string(githubtemplate.ExtractContents(*legacyTemplatePath))
-		}
-
-		if templateContents != "" {
+		if templateContent != "" {
 			if issueState.Body != "" {
 				// prevent excessive newlines between default body and template
 				issueState.Body = strings.TrimRight(issueState.Body, "\n")
 				issueState.Body += "\n\n"
 			}
-			issueState.Body += templateContents
+			issueState.Body += templateContent
 		}
 	}
 
@@ -228,7 +216,7 @@ func TitleBodySurvey(io *iostreams.IOStreams, editorCommand string, issueState *
 	}
 
 	if issueState.Body == "" {
-		issueState.Body = templateContents
+		issueState.Body = templateContent
 	}
 
 	allowPreview := !issueState.HasMetadata()
