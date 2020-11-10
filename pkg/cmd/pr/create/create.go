@@ -191,24 +191,22 @@ func createRun(opts *CreateOptions) (err error) {
 		}
 	}
 
-	if !opts.WebMode {
-		existingPR, err := api.PullRequestForBranch(
-			client, ctx.BaseRepo, ctx.BaseBranch, ctx.HeadBranchLabel, []string{"OPEN"})
-		var notFound *api.NotFoundError
-		if err != nil && !errors.As(err, &notFound) {
-			return fmt.Errorf("error checking for existing pull request: %w", err)
-		}
-		if err == nil {
-			return fmt.Errorf("a pull request for branch %q into branch %q already exists:\n%s",
-				ctx.HeadBranchLabel, ctx.BaseBranch, existingPR.URL)
-		}
+	existingPR, err := api.PullRequestForBranch(
+		client, ctx.BaseRepo, ctx.BaseBranch, ctx.HeadBranchLabel, []string{"OPEN"})
+	var notFound *api.NotFoundError
+	if err != nil && !errors.As(err, &notFound) {
+		return fmt.Errorf("error checking for existing pull request: %w", err)
+	}
+	if err == nil {
+		return fmt.Errorf("a pull request for branch %q into branch %q already exists:\n%s",
+			ctx.HeadBranchLabel, ctx.BaseBranch, existingPR.URL)
 	}
 
 	cs := opts.IO.ColorScheme()
 
 	isTerminal := opts.IO.IsStdinTTY() && opts.IO.IsStdoutTTY()
 
-	if !opts.WebMode && !opts.Autofill {
+	if !opts.Autofill {
 		message := "\nCreating pull request for %s into %s in %s\n\n"
 		if opts.IsDraft {
 			message = "\nCreating draft pull request for %s into %s in %s\n\n"
@@ -225,7 +223,7 @@ func createRun(opts *CreateOptions) (err error) {
 		}
 	}
 
-	if !opts.WebMode && !opts.Autofill && opts.Interactive {
+	if !opts.Autofill && opts.Interactive {
 		var nonLegacyTemplateFiles []string
 		var legacyTemplateFile *string
 
