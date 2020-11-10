@@ -10,6 +10,7 @@ import (
 )
 
 func WithPrAndIssueQueryParams(baseURL, title, body string, assignees, labels, projects []string, milestones []string) (string, error) {
+	// TODO accept IssueMetadataState
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		return "", err
