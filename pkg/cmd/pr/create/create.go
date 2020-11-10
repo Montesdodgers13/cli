@@ -200,9 +200,6 @@ func createRun(opts *CreateOptions) (err error) {
 		return submitPR(*opts, *ctx, state)
 	}
 
-	// TODO destroy titlebodysurvey helper
-	// TODO use state struct in shared helpers as i'm able
-
 	existingPR, err := api.PullRequestForBranch(
 		client, ctx.BaseRepo, ctx.BaseBranch, ctx.HeadBranchLabel, []string{"OPEN"})
 	var notFound *api.NotFoundError
@@ -583,14 +580,10 @@ func previewPR(opts CreateOptions, createCtx CreateContext, state shared.IssueMe
 
 }
 
-func handlePush(opts CreateOptions, createCtx CreateContext) error {
+func handlePush(opts CreateOptions, ctx CreateContext) error {
 	didForkRepo := false
-	baseRepo := createCtx.BaseRepo
-	headRepo := createCtx.HeadRepo
-	headRemote := createCtx.HeadRemote
-	headBranch := createCtx.HeadBranch
-	isPushEnabled := createCtx.IsPushEnabled
-	repoContext := createCtx.RepoContext
+	headRepo := ctx.HeadRepo
+	headRemote := ctx.HeadRemote
 
 	httpClient, err := opts.HttpClient()
 	if err != nil {
@@ -600,8 +593,8 @@ func handlePush(opts CreateOptions, createCtx CreateContext) error {
 
 	// if a head repository could not be determined so far, automatically create
 	// one by forking the base repository
-	if headRepo == nil && isPushEnabled {
-		headRepo, err = api.ForkRepo(client, baseRepo)
+	if headRepo == nil && ctx.IsPushEnabled {
+		headRepo, err = api.ForkRepo(client, ctx.BaseRepo)
 		if err != nil {
 			return fmt.Errorf("error forking repo: %w", err)
 		}
@@ -609,7 +602,7 @@ func handlePush(opts CreateOptions, createCtx CreateContext) error {
 	}
 
 	if headRemote == nil && headRepo != nil {
-		headRemote, _ = repoContext.RemoteForRepo(headRepo)
+		headRemote, _ = ctx.RepoContext.RemoteForRepo(headRepo)
 	}
 
 	// There are two cases when an existing remote for the head repo will be
@@ -619,7 +612,7 @@ func handlePush(opts CreateOptions, createCtx CreateContext) error {
 	//
 	// In either case, we want to add the head repo as a new git remote so we
 	// can push to it.
-	if headRemote == nil && isPushEnabled {
+	if headRemote == nil && ctx.IsPushEnabled {
 		cfg, err := opts.Config()
 		if err != nil {
 			return err
@@ -640,7 +633,7 @@ func handlePush(opts CreateOptions, createCtx CreateContext) error {
 	}
 
 	// automatically push the branch if it hasn't been pushed anywhere yet
-	if isPushEnabled {
+	if ctx.IsPushEnabled {
 		pushBranch := func() error {
 			pushTries := 0
 			maxPushTries := 3
@@ -649,7 +642,7 @@ func handlePush(opts CreateOptions, createCtx CreateContext) error {
 				defer r.Flush()
 				cmdErr := r
 				cmdOut := opts.IO.Out
-				if err := git.Push(headRemote.Name, fmt.Sprintf("HEAD:%s", headBranch), cmdOut, cmdErr); err != nil {
+				if err := git.Push(headRemote.Name, fmt.Sprintf("HEAD:%s", ctx.HeadBranch), cmdOut, cmdErr); err != nil {
 					if didForkRepo && pushTries < maxPushTries {
 						pushTries++
 						// first wait 2 seconds after forking, then 4s, then 6s
