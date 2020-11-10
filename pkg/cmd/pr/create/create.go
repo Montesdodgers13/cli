@@ -251,16 +251,7 @@ func createRun(opts *CreateOptions) (err error) {
 			return err
 		}
 
-		if templateContent != "" {
-			if state.Body != "" {
-				// prevent excessive newlines between default body and template
-				state.Body = strings.TrimRight(state.Body, "\n")
-				state.Body += "\n\n"
-			}
-			state.Body += templateContent
-		}
-
-		err = shared.BodySurvey(&state, editorCommand)
+		err = shared.BodySurvey(&state, templateContent, editorCommand)
 		if err != nil {
 			return err
 		}

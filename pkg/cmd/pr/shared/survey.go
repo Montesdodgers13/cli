@@ -2,6 +2,7 @@ package shared
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/cli/cli/api"
@@ -162,7 +163,16 @@ func selectTemplate(nonLegacyTemplatePaths []string, legacyTemplatePath string, 
 	return string(templateContents), nil
 }
 
-func BodySurvey(state *IssueMetadataState, editorCommand string) error {
+func BodySurvey(state *IssueMetadataState, templateContent, editorCommand string) error {
+	if templateContent != "" {
+		if state.Body != "" {
+			// prevent excessive newlines between default body and template
+			state.Body = strings.TrimRight(state.Body, "\n")
+			state.Body += "\n\n"
+		}
+		state.Body += templateContent
+	}
+
 	p := &surveyext.GhEditor{
 		BlankAllowed:  true,
 		EditorCommand: editorCommand,

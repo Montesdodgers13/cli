@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/api"
@@ -166,16 +165,7 @@ func createRun(opts *CreateOptions) error {
 			return err
 		}
 
-		if templateContent != "" {
-			if tb.Body != "" {
-				// prevent excessive newlines between default body and template
-				tb.Body = strings.TrimRight(tb.Body, "\n")
-				tb.Body += "\n\n"
-			}
-			tb.Body += templateContent
-		}
-
-		err = prShared.BodySurvey(&tb, editorCommand)
+		err = prShared.BodySurvey(&tb, templateContent, editorCommand)
 		if err != nil {
 			return err
 		}
@@ -184,8 +174,7 @@ func createRun(opts *CreateOptions) error {
 			tb.Body = templateContent
 		}
 
-		allowMetadata := repo.ViewerCanTriage()
-		action, err := prShared.ConfirmSubmission(!tb.HasMetadata(), allowMetadata)
+		action, err := prShared.ConfirmSubmission(!tb.HasMetadata(), repo.ViewerCanTriage())
 		if err != nil {
 			return fmt.Errorf("unable to confirm: %w", err)
 		}
