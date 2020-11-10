@@ -110,7 +110,21 @@ func confirmSubmission(allowPreview bool, allowMetadata bool) (Action, error) {
 	}
 }
 
-func selectTemplate(nonLegacyTemplatePaths []string, legacyTemplatePath *string, metadataType metadataStateType) (string, error) {
+func TemplateSurvey(templateFiles []string, legacyTemplate string, state IssueMetadataState) (templateContent string, err error) {
+	if len(templateFiles) == 0 && legacyTemplate == "" {
+		return
+	}
+
+	if len(templateFiles) > 0 {
+		templateContent, err = selectTemplate(templateFiles, legacyTemplate, state.Type)
+	} else {
+		templateContent = string(githubtemplate.ExtractContents(legacyTemplate))
+	}
+
+	return
+}
+
+func selectTemplate(nonLegacyTemplatePaths []string, legacyTemplatePath string, metadataType metadataStateType) (string, error) {
 	templateResponse := struct {
 		Index int
 	}{}
@@ -138,8 +152,8 @@ func selectTemplate(nonLegacyTemplatePaths []string, legacyTemplatePath *string,
 	}
 
 	if templateResponse.Index == len(nonLegacyTemplatePaths) { // the user has selected the blank template
-		if legacyTemplatePath != nil {
-			templateContents := githubtemplate.ExtractContents(*legacyTemplatePath)
+		if legacyTemplatePath != "" {
+			templateContents := githubtemplate.ExtractContents(legacyTemplatePath)
 			return string(templateContents), nil
 		} else {
 			return "", nil
@@ -159,7 +173,7 @@ func TitleBodySurvey(io *iostreams.IOStreams, editorCommand string, issueState *
 
 		if len(nonLegacyTemplatePaths) > 0 {
 			var err error
-			templateContents, err = selectTemplate(nonLegacyTemplatePaths, legacyTemplatePath, issueState.Type)
+			templateContents, err = selectTemplate(nonLegacyTemplatePaths, *legacyTemplatePath, issueState.Type)
 			if err != nil {
 				return err
 			}

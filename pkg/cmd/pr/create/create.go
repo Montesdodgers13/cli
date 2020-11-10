@@ -215,12 +215,12 @@ func createRun(opts *CreateOptions) (err error) {
 			ctx.HeadBranchLabel, ctx.BaseBranch, existingPR.URL)
 	}
 
-	cs := opts.IO.ColorScheme()
-
 	message := "\nCreating pull request for %s into %s in %s\n\n"
 	if opts.IsDraft {
 		message = "\nCreating draft pull request for %s into %s in %s\n\n"
 	}
+
+	cs := opts.IO.ColorScheme()
 
 	fmt.Fprintf(opts.IO.ErrOut, message,
 		cs.Cyan(ctx.HeadBranchLabel),
@@ -231,17 +231,22 @@ func createRun(opts *CreateOptions) (err error) {
 			"%s warning: could not compute title or body defaults: %s\n", cs.Yellow("!"), defaultsErr)
 	}
 
-	action := shared.SubmitAction
+	if !opts.BodyProvided {
+		templateFiles, legacyTemplate := findTemplates(*opts)
 
-	var nonLegacyTemplateFiles []string
-	var legacyTemplateFile *string
+		templateContent, err := shared.TemplateSurvey(templateFiles, legacyTemplate, state)
+		if err != nil {
+			return err
+		}
 
-	if opts.RootDirOverride != "" {
-		nonLegacyTemplateFiles = githubtemplate.FindNonLegacy(opts.RootDirOverride, "PULL_REQUEST_TEMPLATE")
-		legacyTemplateFile = githubtemplate.FindLegacy(opts.RootDirOverride, "PULL_REQUEST_TEMPLATE")
-	} else if rootDir, err := git.ToplevelDir(); err == nil {
-		nonLegacyTemplateFiles = githubtemplate.FindNonLegacy(rootDir, "PULL_REQUEST_TEMPLATE")
-		legacyTemplateFile = githubtemplate.FindLegacy(rootDir, "PULL_REQUEST_TEMPLATE")
+		if templateContent != "" {
+			if state.Body != "" {
+				// prevent excessive newlines between default body and template
+				state.Body = strings.TrimRight(state.Body, "\n")
+				state.Body += "\n\n"
+			}
+			state.Body += templateContent
+		}
 	}
 
 	editorCommand, err := cmdutil.DetermineEditor(opts.Config)
@@ -251,14 +256,13 @@ func createRun(opts *CreateOptions) (err error) {
 
 	// TODO fix this nasty sig. don't need to pass defs, don't need to pass provided title/body...in
 	// general this function should be destroyed.
-	err = shared.TitleBodySurvey(opts.IO, editorCommand, &state, client, ctx.BaseRepo, opts.Title, opts.Body, defs, nonLegacyTemplateFiles, legacyTemplateFile, true, ctx.BaseRepo.ViewerCanTriage())
+	var shim string
+	err = shared.TitleBodySurvey(opts.IO, editorCommand, &state, client, ctx.BaseRepo, opts.Title, opts.Body, defs, []string{}, &shim, true, ctx.BaseRepo.ViewerCanTriage())
 	if err != nil {
 		return fmt.Errorf("could not collect title and/or body: %w", err)
 	}
 
-	action = state.Action
-
-	if action == shared.CancelAction {
+	if state.Action == shared.CancelAction {
 		fmt.Fprintln(opts.IO.ErrOut, "Discarding.")
 		return nil
 	}
@@ -268,11 +272,11 @@ func createRun(opts *CreateOptions) (err error) {
 		return err
 	}
 
-	if action == shared.PreviewAction {
+	if state.Action == shared.PreviewAction {
 		return previewPR(*opts, *ctx, state)
 	}
 
-	if action == shared.SubmitAction {
+	if state.Action == shared.SubmitAction {
 		return submitPR(*opts, *ctx, state)
 	}
 
@@ -663,6 +667,34 @@ func generateCompareURL(createCtx CreateContext, state shared.IssueMetadataState
 		return "", err
 	}
 	return url, nil
+}
+
+func findTemplates(opts CreateOptions) ([]string, string) {
+	dir := opts.RootDirOverride
+	if dir == "" {
+		rootDir, err := git.ToplevelDir()
+		if err != nil {
+			return []string{}, ""
+		}
+		dir = rootDir
+	}
+
+	templateFiles := githubtemplate.FindNonLegacy(dir, "PULL_REQUEST_TEMPLATE")
+	legacyTemplate := githubtemplate.FindLegacy(dir, "PULL_REQUEST_TEMPLATE")
+
+	return templateFiles, *legacyTemplate
+}
+
+func findTemplateFiles(opts CreateOptions) []string {
+	dir := opts.RootDirOverride
+	if dir == "" {
+		rootDir, err := git.ToplevelDir()
+		if err != nil {
+			return []string{}
+		}
+		dir = rootDir
+	}
+	return githubtemplate.FindNonLegacy(dir, "PULL_REQUEST_TEMPLATE")
 }
 
 var gitPushRegexp = regexp.MustCompile("^remote: (Create a pull request.*by visiting|[[:space:]]*https://.*/pull/new/).*\n?$")
