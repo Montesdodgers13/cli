@@ -156,7 +156,6 @@ func createRun(opts *CreateOptions) error {
 			return err
 		}
 
-		// TODO switch to new fns
 		err = prShared.TitleSurvey(&tb)
 		if err != nil {
 			return err
