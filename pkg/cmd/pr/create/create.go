@@ -682,7 +682,15 @@ func findTemplates(opts CreateOptions) ([]string, string) {
 	templateFiles := githubtemplate.FindNonLegacy(dir, "PULL_REQUEST_TEMPLATE")
 	legacyTemplate := githubtemplate.FindLegacy(dir, "PULL_REQUEST_TEMPLATE")
 
-	return templateFiles, *legacyTemplate
+	// TODO stop using string pointer
+
+	lt := ""
+
+	if legacyTemplate != nil {
+		lt = *legacyTemplate
+	}
+
+	return templateFiles, lt
 }
 
 func findTemplateFiles(opts CreateOptions) []string {
