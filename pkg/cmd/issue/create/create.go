@@ -4,13 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/api"
 	"github.com/cli/cli/git"
 	"github.com/cli/cli/internal/config"
 	"github.com/cli/cli/internal/ghrepo"
-	"github.com/cli/cli/pkg/cmd/pr/shared"
 	prShared "github.com/cli/cli/pkg/cmd/pr/shared"
 	"github.com/cli/cli/pkg/cmdutil"
 	"github.com/cli/cli/pkg/githubtemplate"
@@ -146,15 +146,9 @@ func createRun(opts *CreateOptions) error {
 		Labels:     opts.Labels,
 		Projects:   opts.Projects,
 		Milestones: milestones,
+		Title:      opts.Title,
+		Body:       opts.Body,
 	}
-
-	templateContent, err := shared.TemplateSurvey(templateFiles, legacyTemplate, tb)
-	if err != nil {
-		return err
-	}
-
-	title := opts.Title
-	body := opts.Body
 
 	if opts.Interactive {
 		editorCommand, err := cmdutil.DetermineEditor(opts.Config)
@@ -162,34 +156,69 @@ func createRun(opts *CreateOptions) error {
 			return err
 		}
 
-		err = prShared.TitleBodySurvey(opts.IO, editorCommand, &tb, apiClient, baseRepo, title, body, prShared.Defaults{}, templateContent, false, repo.ViewerCanTriage())
+		// TODO switch to new fns
+		err = prShared.TitleSurvey(&tb)
 		if err != nil {
-			return fmt.Errorf("could not collect title and/or body: %w", err)
+			return err
 		}
 
-		action = tb.Action
+		templateContent := ""
+
+		templateContent, err = prShared.TemplateSurvey(templateFiles, legacyTemplate, tb)
+		if err != nil {
+			return err
+		}
+
+		if templateContent != "" {
+			if tb.Body != "" {
+				// prevent excessive newlines between default body and template
+				tb.Body = strings.TrimRight(tb.Body, "\n")
+				tb.Body += "\n\n"
+			}
+			tb.Body += templateContent
+		}
+
+		err = prShared.BodySurvey(&tb, editorCommand)
+		if err != nil {
+			return err
+		}
+
+		if tb.Body == "" {
+			tb.Body = templateContent
+		}
+
+		allowMetadata := repo.ViewerCanTriage()
+		action, err := prShared.ConfirmSubmission(!tb.HasMetadata(), allowMetadata)
+		if err != nil {
+			return fmt.Errorf("unable to confirm: %w", err)
+		}
+
+		if action == prShared.MetadataAction {
+			err = prShared.MetadataSurvey(opts.IO, apiClient, baseRepo, &tb)
+			if err != nil {
+				return err
+			}
+
+			action, err = prShared.ConfirmSubmission(!tb.HasMetadata(), false)
+			if err != nil {
+				return err
+			}
+		}
 
 		if tb.Action == prShared.CancelAction {
 			fmt.Fprintln(opts.IO.ErrOut, "Discarding.")
 
 			return nil
 		}
-
-		if title == "" {
-			title = tb.Title
-		}
-		if body == "" {
-			body = tb.Body
-		}
 	} else {
-		if title == "" {
+		if tb.Title == "" {
 			return fmt.Errorf("title can't be blank")
 		}
 	}
 
 	if action == prShared.PreviewAction {
 		openURL := ghrepo.GenerateRepoURL(baseRepo, "issues/new")
-		openURL, err = prShared.WithPrAndIssueQueryParams(openURL, title, body, tb.Assignees, tb.Labels, tb.Projects, tb.Milestones)
+		openURL, err = prShared.WithPrAndIssueQueryParams(openURL, tb.Title, tb.Body, tb.Assignees, tb.Labels, tb.Projects, tb.Milestones)
 		if err != nil {
 			return err
 		}
@@ -199,8 +228,8 @@ func createRun(opts *CreateOptions) error {
 		return utils.OpenInBrowser(openURL)
 	} else if action == prShared.SubmitAction {
 		params := map[string]interface{}{
-			"title": title,
-			"body":  body,
+			"title": tb.Title,
+			"body":  tb.Body,
 		}
 
 		err = prShared.AddMetadataToIssueParams(apiClient, baseRepo, params, &tb)
