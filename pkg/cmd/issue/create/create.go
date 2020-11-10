@@ -101,14 +101,7 @@ func createRun(opts *CreateOptions) error {
 		return err
 	}
 
-	var nonLegacyTemplateFiles []string
-	if opts.RootDirOverride != "" {
-		nonLegacyTemplateFiles = githubtemplate.FindNonLegacy(opts.RootDirOverride, "ISSUE_TEMPLATE")
-	} else if opts.RepoOverride == "" {
-		if rootDir, err := git.ToplevelDir(); err == nil {
-			nonLegacyTemplateFiles = githubtemplate.FindNonLegacy(rootDir, "ISSUE_TEMPLATE")
-		}
-	}
+	templateFiles, legacyTemplate := findTemplates(*opts)
 
 	isTerminal := opts.IO.IsStdoutTTY()
 
@@ -124,7 +117,7 @@ func createRun(opts *CreateOptions) error {
 			if err != nil {
 				return err
 			}
-		} else if len(nonLegacyTemplateFiles) > 1 {
+		} else if len(templateFiles) > 1 {
 			openURL += "/choose"
 		}
 		if isTerminal {
@@ -158,20 +151,12 @@ func createRun(opts *CreateOptions) error {
 	body := opts.Body
 
 	if opts.Interactive {
-		var legacyTemplateFile *string
-		if opts.RepoOverride == "" {
-			if rootDir, err := git.ToplevelDir(); err == nil {
-				// TODO: figure out how to stub this in tests
-				legacyTemplateFile = githubtemplate.FindLegacy(rootDir, "ISSUE_TEMPLATE")
-			}
-		}
-
 		editorCommand, err := cmdutil.DetermineEditor(opts.Config)
 		if err != nil {
 			return err
 		}
 
-		err = prShared.TitleBodySurvey(opts.IO, editorCommand, &tb, apiClient, baseRepo, title, body, prShared.Defaults{}, nonLegacyTemplateFiles, legacyTemplateFile, false, repo.ViewerCanTriage())
+		err = prShared.TitleBodySurvey(opts.IO, editorCommand, &tb, apiClient, baseRepo, title, body, prShared.Defaults{}, templateFiles, &legacyTemplate, false, repo.ViewerCanTriage())
 		if err != nil {
 			return fmt.Errorf("could not collect title and/or body: %w", err)
 		}
@@ -228,4 +213,29 @@ func createRun(opts *CreateOptions) error {
 	}
 
 	return nil
+}
+
+func findTemplates(opts CreateOptions) ([]string, string) {
+	// TODO can share with pr create's version
+	dir := opts.RootDirOverride
+	if dir == "" {
+		rootDir, err := git.ToplevelDir()
+		if err != nil {
+			return []string{}, ""
+		}
+		dir = rootDir
+	}
+
+	templateFiles := githubtemplate.FindNonLegacy(dir, "ISSUE_TEMPLATE")
+	legacyTemplate := githubtemplate.FindLegacy(dir, "ISSUE_TEMPLATE")
+
+	// TODO stop using string pointer
+
+	lt := ""
+
+	if legacyTemplate != nil {
+		lt = *legacyTemplate
+	}
+
+	return templateFiles, lt
 }
