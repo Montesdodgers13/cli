@@ -60,7 +60,7 @@ type CreateContext struct {
 	// This struct stores contextual data about the creation process and is for building up enough
 	// data to create a pull request
 	RepoContext        *context.ResolvedRemotes
-	BaseRepo           *api.Repository
+	BaseRepo           ghrepo.Interface
 	HeadRepo           ghrepo.Interface
 	BaseTrackingBranch string
 	BaseBranch         string
@@ -254,7 +254,7 @@ func createRun(opts *CreateOptions) (err error) {
 		}
 	}
 
-	allowMetadata := ctx.BaseRepo.ViewerCanTriage()
+	allowMetadata := ctx.BaseRepo.(api.Repository).ViewerCanTriage()
 	action, err := shared.ConfirmSubmission(!state.HasMetadata(), allowMetadata)
 	if err != nil {
 		return fmt.Errorf("unable to confirm: %w", err)
@@ -549,7 +549,7 @@ func submitPR(opts CreateOptions, ctx CreateContext, state shared.IssueMetadataS
 		return err
 	}
 
-	pr, err := api.CreatePullRequest(client, ctx.BaseRepo, params)
+	pr, err := api.CreatePullRequest(client, ctx.BaseRepo.(*api.Repository), params)
 	if pr != nil {
 		fmt.Fprintln(opts.IO.Out, pr.URL)
 	}

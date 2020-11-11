@@ -15,6 +15,7 @@ import (
 	"github.com/cli/cli/internal/config"
 	"github.com/cli/cli/internal/ghrepo"
 	"github.com/cli/cli/internal/run"
+	prShared "github.com/cli/cli/pkg/cmd/pr/shared"
 	"github.com/cli/cli/pkg/cmdutil"
 	"github.com/cli/cli/pkg/httpmock"
 	"github.com/cli/cli/pkg/iostreams"
@@ -732,50 +733,42 @@ deadb00f refs/remotes/origin/feature`) // git show-ref --verify (ShowRefs)
 }
 
 func Test_generateCompareURL(t *testing.T) {
-	type args struct {
-		r          ghrepo.Interface
-		base       string
-		head       string
-		title      string
-		body       string
-		assignees  []string
-		labels     []string
-		projects   []string
-		milestones []string
-	}
 	tests := []struct {
 		name    string
-		args    args
+		ctx     CreateContext
+		state   prShared.IssueMetadataState
 		want    string
 		wantErr bool
 	}{
 		{
 			name: "basic",
-			args: args{
-				r:    ghrepo.New("OWNER", "REPO"),
-				base: "main",
-				head: "feature",
+			ctx: CreateContext{
+				BaseRepo:   ghrepo.New("OWNER", "REPO"),
+				BaseBranch: "main",
+				HeadBranch: "feature",
 			},
 			want:    "https://github.com/OWNER/REPO/compare/main...feature?expand=1",
 			wantErr: false,
 		},
 		{
 			name: "with labels",
-			args: args{
-				r:      ghrepo.New("OWNER", "REPO"),
-				base:   "a",
-				head:   "b",
-				labels: []string{"one", "two three"},
+			ctx: CreateContext{
+				BaseRepo:   ghrepo.New("OWNER", "REPO"),
+				BaseBranch: "a",
+				HeadBranch: "b",
+			},
+			state: prShared.IssueMetadataState{
+				Labels: []string{"one", "two three"},
 			},
 			want:    "https://github.com/OWNER/REPO/compare/a...b?expand=1&labels=one%2Ctwo+three",
 			wantErr: false,
 		},
 		{
 			name: "complex branch names",
-			args: args{
-				r:    ghrepo.New("OWNER", "REPO"),
-				base: "main/trunk",
-				head: "owner:feature",
+			ctx: CreateContext{
+				BaseRepo:   ghrepo.New("OWNER", "REPO"),
+				BaseBranch: "main/trunk",
+				HeadBranch: "owner:feature",
 			},
 			want:    "https://github.com/OWNER/REPO/compare/main%2Ftrunk...owner%3Afeature?expand=1",
 			wantErr: false,
@@ -783,7 +776,7 @@ func Test_generateCompareURL(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := generateCompareURL(tt.args.r, tt.args.base, tt.args.head, tt.args.title, tt.args.body, tt.args.assignees, tt.args.labels, tt.args.projects, tt.args.milestones)
+			got, err := generateCompareURL(tt.ctx, tt.state)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("generateCompareURL() error = %v, wantErr %v", err, tt.wantErr)
 				return
