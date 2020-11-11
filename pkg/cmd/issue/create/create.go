@@ -108,10 +108,20 @@ func createRun(opts *CreateOptions) error {
 		milestones = []string{opts.Milestone}
 	}
 
+	tb := prShared.IssueMetadataState{
+		Type:       prShared.IssueMetadata,
+		Assignees:  opts.Assignees,
+		Labels:     opts.Labels,
+		Projects:   opts.Projects,
+		Milestones: milestones,
+		Title:      opts.Title,
+		Body:       opts.Body,
+	}
+
 	if opts.WebMode {
 		openURL := ghrepo.GenerateRepoURL(baseRepo, "issues/new")
 		if opts.Title != "" || opts.Body != "" {
-			openURL, err = prShared.WithPrAndIssueQueryParams(openURL, opts.Title, opts.Body, opts.Assignees, opts.Labels, opts.Projects, milestones)
+			openURL, err = prShared.WithPrAndIssueQueryParams(openURL, tb)
 			if err != nil {
 				return err
 			}
@@ -137,15 +147,6 @@ func createRun(opts *CreateOptions) error {
 	}
 
 	action := prShared.SubmitAction
-	tb := prShared.IssueMetadataState{
-		Type:       prShared.IssueMetadata,
-		Assignees:  opts.Assignees,
-		Labels:     opts.Labels,
-		Projects:   opts.Projects,
-		Milestones: milestones,
-		Title:      opts.Title,
-		Body:       opts.Body,
-	}
 
 	if opts.Interactive {
 		editorCommand, err := cmdutil.DetermineEditor(opts.Config)
@@ -204,7 +205,7 @@ func createRun(opts *CreateOptions) error {
 
 	if action == prShared.PreviewAction {
 		openURL := ghrepo.GenerateRepoURL(baseRepo, "issues/new")
-		openURL, err = prShared.WithPrAndIssueQueryParams(openURL, tb.Title, tb.Body, tb.Assignees, tb.Labels, tb.Projects, tb.Milestones)
+		openURL, err = prShared.WithPrAndIssueQueryParams(openURL, tb)
 		if err != nil {
 			return err
 		}

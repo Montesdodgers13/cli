@@ -672,7 +672,7 @@ func generateCompareURL(createCtx CreateContext, state shared.IssueMetadataState
 		createCtx.BaseRepo,
 		"compare/%s...%s?expand=1",
 		url.QueryEscape(createCtx.BaseBranch), url.QueryEscape(createCtx.HeadBranch))
-	url, err := shared.WithPrAndIssueQueryParams(u, state.Title, state.Body, state.Assignees, state.Labels, state.Projects, state.Milestones)
+	url, err := shared.WithPrAndIssueQueryParams(u, state)
 	if err != nil {
 		return "", err
 	}
