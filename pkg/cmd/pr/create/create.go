@@ -527,7 +527,7 @@ func NewCreateContext(opts *CreateOptions) (*CreateContext, error) {
 
 }
 
-func submitPR(opts CreateOptions, createCtx CreateContext, state shared.IssueMetadataState) error {
+func submitPR(opts CreateOptions, ctx CreateContext, state shared.IssueMetadataState) error {
 	httpClient, err := opts.HttpClient()
 	if err != nil {
 		return nil
@@ -538,20 +538,20 @@ func submitPR(opts CreateOptions, createCtx CreateContext, state shared.IssueMet
 		"title":       state.Title,
 		"body":        state.Body,
 		"draft":       opts.IsDraft,
-		"baseRefName": createCtx.BaseBranch,
-		"headRefName": createCtx.HeadBranchLabel,
+		"baseRefName": ctx.BaseBranch,
+		"headRefName": ctx.HeadBranchLabel,
 	}
 
 	if params["title"] == "" {
 		return errors.New("pull request title must not be blank")
 	}
 
-	err = shared.AddMetadataToIssueParams(client, createCtx.BaseRepo, params, &state)
+	err = shared.AddMetadataToIssueParams(client, ctx.BaseRepo, params, &state)
 	if err != nil {
 		return err
 	}
 
-	pr, err := api.CreatePullRequest(client, createCtx.BaseRepo, params)
+	pr, err := api.CreatePullRequest(client, ctx.BaseRepo, params)
 	if pr != nil {
 		fmt.Fprintln(opts.IO.Out, pr.URL)
 	}
@@ -564,8 +564,8 @@ func submitPR(opts CreateOptions, createCtx CreateContext, state shared.IssueMet
 	return nil
 }
 
-func previewPR(opts CreateOptions, createCtx CreateContext, state shared.IssueMetadataState) error {
-	openURL, err := generateCompareURL(createCtx, state)
+func previewPR(opts CreateOptions, ctx CreateContext, state shared.IssueMetadataState) error {
+	openURL, err := generateCompareURL(ctx, state)
 	if err != nil {
 		return err
 	}
@@ -664,11 +664,11 @@ func handlePush(opts CreateOptions, ctx CreateContext) error {
 	return nil
 }
 
-func generateCompareURL(createCtx CreateContext, state shared.IssueMetadataState) (string, error) {
+func generateCompareURL(ctx CreateContext, state shared.IssueMetadataState) (string, error) {
 	u := ghrepo.GenerateRepoURL(
-		createCtx.BaseRepo,
+		ctx.BaseRepo,
 		"compare/%s...%s?expand=1",
-		url.QueryEscape(createCtx.BaseBranch), url.QueryEscape(createCtx.HeadBranch))
+		url.QueryEscape(ctx.BaseBranch), url.QueryEscape(ctx.HeadBranch))
 	url, err := shared.WithPrAndIssueQueryParams(u, state)
 	if err != nil {
 		return "", err
